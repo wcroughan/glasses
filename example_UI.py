@@ -6,8 +6,15 @@ import datetime
 
 # from imageai.Detection import ObjectDetection
 
-SHOW_VID = True
+SHOW_VID = False
 SAVE_VID = True
+SAVE_ORIGINAL_VID = True
+
+# 0 - UT egocentric video with blurred faces, first 350 frames
+# 1 - music room video, Bill and Becca both pre-loaded faces
+# 2 - music room video, Just Bill pre-loaded
+# 3 - music room video, nothing pre-loaded
+INVID_ID = 1
 
 data_dirs = ["/home/wcroughan/glasses_data", "/path/to/your/data/folder"]
 data_dir = ""
@@ -19,8 +26,15 @@ if data_dir == "":
     print("Couldn't find any of the folders listed in data_dirs. Add the folder on your machine to the list.")
     exit()
 
-input_video_path = os.path.join(data_dir, "P01.mp4")
-output_video_path = os.path.join(os.getcwd(), "outvid.avi")
+if INVID_ID == 0:
+    input_video_path = os.path.join(data_dir, "P01.mp4")
+elif INVID_ID in [1, 2, 3]:
+    input_video_path = os.path.join(data_dir, "music_15fps_480.mp4")
+else:
+    print("unknown input video index")
+    exit()
+output_video_path = os.path.join(data_dir, "outvid.avi")
+output_original_video_path = os.path.join(data_dir, "outvid_original.avi")
 
 
 class MyVideoAnalyzer:
@@ -34,10 +48,10 @@ class MyVideoAnalyzer:
         # self.detection_box2 = (800, 480)
 
         self.detection_box1 = (0, 0)
-        self.detection_box2 = (240, 220)
+        self.detection_box2 = (240, 270)
 
-        self.output_box1 = (0, 220)
-        self.output_box2 = (200, 320)
+        self.output_box1 = (240, 170)
+        self.output_box2 = (420, 270)
         self.output_msg1 = ""
         self.output_msg2 = ""
         self.output_msg_change_time = 0
@@ -52,9 +66,12 @@ class MyVideoAnalyzer:
         self.unknown_faces_names = []
         self.unknown_faces_hints = []
 
-        self.unknown_faces_dir = "./unknown_faces"
+        self.unknown_faces_dir = os.path.join(data_dir, "unknown_faces")
         self.save_unknown_faces = True
         self.run_pfx = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+        if not os.path.exists(self.unknown_faces_dir):
+            os.mkdir(self.unknown_faces_dir)
 
     def add_known_face(self, filename, name, hint):
         faceimg = face_recognition.load_image_file(filename)
@@ -98,7 +115,7 @@ class MyVideoAnalyzer:
 
         #  first check for known faces that we added before running the video
         for enc in facencs:
-            match = face_recognition.compare_faces(self.known_faces, enc, tolerance=0.5)
+            match = face_recognition.compare_faces(self.known_faces, enc, tolerance=0.7)
 
             for i, m in enumerate(match):
                 if m:
@@ -114,7 +131,7 @@ class MyVideoAnalyzer:
         # If none of those found, check for new faces we've added while running the video
         if not found_face:
             for enc in facencs:
-                match = face_recognition.compare_faces(self.unknown_faces, enc, tolerance=0.5)
+                match = face_recognition.compare_faces(self.unknown_faces, enc, tolerance=0.7)
 
                 for i, m in enumerate(match):
                     if m:
@@ -138,8 +155,8 @@ class MyVideoAnalyzer:
                     raise Exception("This should never happen")
 
                 self.unknown_faces.append(encs[0])
-                self.unknown_faces_names.append("new_{}".format(len(self.unknown_faces)-1))
-                self.unknown_faces_hints.append("{}".format(frame_index))
+                self.unknown_faces_names.append("newface {}".format(len(self.unknown_faces)-1))
+                self.unknown_faces_hints.append("frame {}".format(frame_index))
 
                 fname = os.path.join(self.unknown_faces_dir,
                                      "{}_{}.png".format(self.run_pfx, frame_index))
@@ -168,12 +185,21 @@ class MyVideoAnalyzer:
             print("Couldn't open video {}".format(filename))
             return 1
 
+        print("input video is {}x{}".format(int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                                            int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+
         if SAVE_VID:
             w = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fr = vid.get(cv2.CAP_PROP_FPS)
-            print("invid is {}x{}".format(w, h))
             writer = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(
+                'M', 'J', 'P', 'G'), fr, (w, h))
+
+        if SAVE_ORIGINAL_VID:
+            w = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fr = vid.get(cv2.CAP_PROP_FPS)
+            original_writer = cv2.VideoWriter(output_original_video_path, cv2.VideoWriter_fourcc(
                 'M', 'J', 'P', 'G'), fr, (w, h))
 
         framei = 0
@@ -183,6 +209,9 @@ class MyVideoAnalyzer:
                 break
             if num_frames is not None and framei >= num_frames:
                 break
+
+            if SAVE_ORIGINAL_VID:
+                original_writer.write(frame)
 
             self.process_frame(frame, framei)
             if SAVE_VID:
@@ -200,6 +229,8 @@ class MyVideoAnalyzer:
 
         if SAVE_VID:
             writer.release()
+        if SAVE_ORIGINAL_VID:
+            original_writer.release()
         vid.release()
         if SHOW_VID:
             cv2.destroyAllWindows()
@@ -207,5 +238,15 @@ class MyVideoAnalyzer:
 
 if __name__ == "__main__":
     mva = MyVideoAnalyzer()
-    mva.add_known_face(os.path.join(data_dir, "facecap2.png"), "guy", "is not blurry")
-    mva.process_video(input_video_path, num_frames=350)
+    if INVID_ID == 0:
+        mva.add_known_face(os.path.join(data_dir, "facecap2.png"), "guy", "is not blurry")
+        mva.process_video(input_video_path, num_frames=350)
+    elif INVID_ID == 1:
+        mva.add_known_face(os.path.join(data_dir, "bill.png"), "Bill", "This is bill")
+        mva.add_known_face(os.path.join(data_dir, "becca.png"), "Becca", "This is becca")
+        mva.process_video(input_video_path)
+    elif INVID_ID == 2:
+        mva.add_known_face(os.path.join(data_dir, "bill.png"), "Bill", "This is bill")
+        mva.process_video(input_video_path)
+    elif INVID_ID == 3:
+        mva.process_video(input_video_path)
