@@ -1,8 +1,19 @@
+from imageai.Detection import VideoObjectDetection
 import os
 import json
 import cv2
-from imageai.Detection import VideoObjectDetection
+import tensorflow as tf
+# gpus = tf.config.experimental.list_physical_devices('GPU')
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
+tf.debugging.set_log_device_placement(True)
+config = tf.compat.v1.ConfigProto()
+config.gpu_options.allow_growth = True
+# config.gpu_options.per_process_gpu_memory_fraction = 0.9
+session = tf.compat.v1.Session(config=config)
+
+FORCE_REBUILD = True
+SAVE_ALL_AND_EXIT = True
 
 SHOW_VID = False
 SAVE_VID = True
@@ -10,7 +21,8 @@ SAVE_ORIGINAL_VID = True
 
 # 0 - UT egocentric video with blurred faces, first 350 frames
 # 1 - music room video
-INVID_ID = 1
+# 2 - music room video, first second
+INVID_ID = 0
 
 data_dirs = ["/home/wcroughan/glasses_data", "/path/to/your/data/folder"]
 data_dir = ""
@@ -25,7 +37,7 @@ if data_dir == "":
 
 if INVID_ID == 0:
     input_video_path = os.path.join(data_dir, "P01.mp4")
-elif INVID_ID == 1:
+elif INVID_ID in [1, 2]:
     input_video_path = os.path.join(data_dir, "music_15fps_480.mp4")
 else:
     print("unknown input video index")
@@ -39,8 +51,10 @@ saveFile = os.path.join(data_dir, "VideoSearcherObject{}.dat".format(INVID_ID))
 class VideoSearcher:
     def __init__(self):
         self.detector = VideoObjectDetection()
-        self.detector.setModelTypeAsYOLOv3()
-        self.detector.setModelPath(os.path.join(data_dir, "yolo.h5"))
+        # self.detector.setModelTypeAsYOLOv3()
+        # self.detector.setModelPath(os.path.join(data_dir, "yolo.h5"))
+        self.detector.setModelTypeAsTinyYOLOv3()
+        self.detector.setModelPath(os.path.join(data_dir, "yolo-tiny.h5"))
         self.detector.loadModel()
         self.cobs = self.detector.CustomObjects(person=True)
 
@@ -207,10 +221,30 @@ class VideoSearcher:
 
 if __name__ == "__main__":
     vs = VideoSearcher()
-    if vs.loadFromFile(saveFile):
-        print("couldn't load object, remaking file")
-        vs.analyzeVideo(input_video_path)
+
+    remake_model = FORCE_REBUILD
+    if not remake_model:
+        loadret = vs.loadFromFile(saveFile)
+        if loadret:
+            print("couldn't load object, remaking file")
+            remake_model = True
+
+    if remake_model:
+        if INVID_ID == 2:
+            vs.analyzeVideo(input_video_path, dur=0.5)
+        else:
+            vs.analyzeVideo(input_video_path)
         vs.saveToFile(saveFile)
+
+    if SAVE_ALL_AND_EXIT:
+        allobs = list(vs.getObjectList())
+        for ob in allobs:
+            print(ob)
+            fname = "object_video_{}.avi".format(ob)
+            vs.makeVideoForObject(ob, os.path.join(data_dir, fname), fpsScale=1.0)
+        session.close()
+        exit()
+    
 
     running = True
     while running:
@@ -234,3 +268,5 @@ if __name__ == "__main__":
                     vs.makeVideoForObject(ob, os.path.join(data_dir, fname), fpsScale=1.0)
             except KeyError:
                 print("Object {} not found".format(ob))
+
+    session.close()

@@ -4,15 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-tensorflow = "*"
 pylint = "*"
 autopep8 = "*"
-tensorflow-datasets = "*"
 imageai = "*"
 opencv-python = "*"
-tk = "*"
 pyqt5 = "*"
 face-recognition = "*"
+tensorflow = "*"
 
 [dev-packages]
 

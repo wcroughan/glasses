@@ -16,7 +16,7 @@ SAVE_ORIGINAL_VID = True
 # 3 - music room video, nothing pre-loaded
 INVID_ID = 1
 
-data_dirs = ["/home/wcroughan/glasses_data", "/path/to/your/data/folder"]
+data_dirs = ["/home/wcroughan/glasses_data/facial_recog", "/path/to/your/data/folder"]
 data_dir = ""
 for dd in data_dirs:
     if os.path.exists(dd):
